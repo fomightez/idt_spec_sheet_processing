@@ -3,6 +3,8 @@ Python scripts and Jupyter Notebooks to extract data from IDT spec sheets for pr
 
 ---------
 
+These are meant mine scanned spec sheets you may have if you order your primers/oligonucleotides from [Integrated DNA Technology (IDT)](https://www.idtdna.com/), and then combines the mined data into a spreadsheet/text table you can use going forward as your laboratorys's primer listing. Then let's you mine more scanned later and continue to combine to keep updating as more spec sheets are found or orders placed.
+
 The scripts and notebooks:
 - `idt_primer_spec_sheet_ocr.py` - script that mines details scans of IDT spec sheets (as PDFs) using optical character recognition (OCR) 
 - `idt_primer_spec_sheets_combine.py` - several mined detiled SCVs get combined to one set of mined data
