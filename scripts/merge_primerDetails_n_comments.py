@@ -7,10 +7,15 @@ Cross-merge the comments of two lists that describe the same primers, and write 
 
 For every primer that is in BOTH lists:
     - the notes TXT comment is APPENDED to the end of the TSV comment            (TSV -> BETTER_<tsv name>)
-    - the length and Tm from the TSV comment are added to the FRONT of the TXT comment   (TXT -> BETTER_<txt name>)
+    - the length and Tm from the TSV comment are added to the FRONT of the TXT comment, and the
+      "also listed as: ..." part of the TSV comment (the other names the same sequence was ordered under, written
+      by the combine script), if it has one, is added to the END of the TXT comment   (TXT -> BETTER_<txt name>)
 
-        TSV:  20 nts; Tm= 51.9 °C; <comment from the TXT>
-        TXT:  20 nts; Tm= 51.9 °C; <the original TXT comment>
+        TSV:  20 nts; Tm= 51.9 °C; also listed as: 18S rRNA F(1); <comment from the TXT>
+        TXT:  20 nts; Tm= 51.9 °C; <the original TXT comment>; also listed as: 18S rRNA F(1)
+
+    The "also listed as: ..." part is everything from those words up to the next "; " or the end of the TSV
+    comment. A TSV comment without one adds nothing to the end of the TXT comment.
 
 Usage:
     python merge_primerDetails_n_comments.py extracted_info.tsv my_primers.txt
@@ -26,7 +31,8 @@ What is left alone
     The input files are never changed; new files with the prefix BETTER_ are written. Every other line of each
     file is copied exactly as it was: blank lines, notes, headers, the Upstate list of "name <TAB> 5' - SEQ - 3'"
     lines, line endings and the file's text encoding. Lines that are already merged are not merged twice, so
-    running the script again on its own output changes nothing.
+    running the script again on its own output changes nothing. (The "also listed as: ..." text that this script
+    put at the end of a TXT comment is not copied back into the TSV, which already has it.)
 
 Lines separated by spaces
     A primer line in the TXT may be separated by runs of two or more spaces instead of tabs. These are read the
@@ -45,10 +51,13 @@ from pathlib import Path
 OUTPUT_PREFIX = "BETTER_"      # put in front of each input file's name to make the new file's name
 COMMENT_JOINER = "; "          # between the pieces of a comment, as in "21 nts; Tm= 50.2 °C; any comments"
 MIN_SEQUENCE_LENGTH = 8        # a first cell must have at least this many characters to count as a sequence
+ALSO_LISTED_LABEL = "also listed as:"   # the words the combine script puts in front of the other names
 # ====================================================================================
 
 SEQUENCE_CELL = re.compile(r"(?:/[^/\s]+/|[ACGTUNRYSWKMBDHV])+")
 LEADING_INFO = re.compile(r"^\s*(?:\d+|\?)\s*nts\s*;\s*Tm=\s*(?:[\d.]+\s*\S*C|n/a)\s*(?:;\s*)?")
+# "also listed as: A | B" up to the next "; " (or the end of the comment)
+ALSO_LISTED = re.compile(re.escape(ALSO_LISTED_LABEL) + r"(?:(?!;\s).)*", re.IGNORECASE)
 LENGTH_AND_TM = re.compile(r"(?P<length>(?:\d+|\?)\s*nts)\s*;\s*(?P<tm>Tm=\s*(?:[\d.]+\s*\S*C|n/a))")
 
 
@@ -89,6 +98,21 @@ def length_and_tm(comment):
     if not m:
         return None
     return f"{' '.join(m.group('length').split())}{COMMENT_JOINER.rstrip()} {' '.join(m.group('tm').split())}"
+
+
+def also_listed_part(comment):
+    """The 'also listed as: A | B' part of a TSV comment, or None if it has none."""
+    m = ALSO_LISTED.search(comment)
+    return m.group(0).strip() if m else None
+
+
+def strip_also_listed(note, parts):
+    """A TXT note without the exact 'also listed as: ...' part(s) this script may have put at its END. They are
+    removed only when they are the same text the matching TSV comment has, so the TSV does not get them twice
+    and anything you wrote yourself is left alone."""
+    for part in parts:
+        note = re.sub(r"(?:;\s*)?" + re.escape(part) + r"\s*$", "", note.rstrip())
+    return note.strip()
 
 
 # ---------------------------------------------------------------- reading and writing, keeping encodings
@@ -178,8 +202,9 @@ def index_by(rows, key):
 # ---------------------------------------------------------------- main
 def main():
     ap = argparse.ArgumentParser(
-        description="Append TXT comments to the TSV and add length/Tm from the TSV to the front of the TXT "
-                    "comments, for primers that are in both lists. Writes new BETTER_ copies.")
+        description="Append TXT comments to the TSV; add length/Tm from the TSV to the front of the TXT comments and "
+                    "any 'also listed as: ...' part to the end, for primers that are in both lists. "
+                    "Writes new BETTER_ copies.")
     ap.add_argument("tsv", help="the spec-sheet TSV: Sequence, Name, Comments")
     ap.add_argument("txt", help="your notes TXT: Sequence, Name, Comments (other text allowed)")
     ap.add_argument("--out-dir", help="folder for the new files (default: next to each input file)")
@@ -211,8 +236,15 @@ def main():
     for seq in matched:
         t_rows, n_rows = tsv_by_seq[seq], txt_by_seq[seq]
 
+        # the "also listed as: ..." part(s) that the TSV comments for this primer carry
+        t_alsos = []
+        for r in t_rows:
+            part = also_listed_part(r["comment"])
+            if part and part not in t_alsos:
+                t_alsos.append(part)
+
         # TSV: append the notes to the end of the comment
-        notes = [n for n in (strip_leading_info(r["comment"]) for r in n_rows) if n]
+        notes = [n for n in (strip_also_listed(strip_leading_info(r["comment"]), t_alsos) for r in n_rows) if n]
         for r in t_rows:
             current = r["comment"]
             to_add = [n for n in notes if n not in current]          # never add the same note twice
@@ -221,15 +253,23 @@ def main():
                 continue
             r["new_comment"] = (current.rstrip() + COMMENT_JOINER if current.strip() else "") + COMMENT_JOINER.join(to_add)
 
-        # TXT: put length and Tm from the TSV at the front of the comment
+        # TXT: put length and Tm from the TSV at the front of the comment, and the "also listed as: ..." part at the end
         info = next((x for x in (length_and_tm(r["comment"]) for r in t_rows) if x), None)
         for r in n_rows:
             if info is None:
                 no_info.append(r["name"])
-            elif r["comment"].lstrip().startswith(info):
+            comment = r["comment"]
+            if info and not comment.lstrip().startswith(info):
+                comment = info + (COMMENT_JOINER + comment if comment.strip() else "")
+            added_also = False
+            for part in t_alsos:
+                if part not in comment:                                  # never add the same text twice
+                    comment = (comment.rstrip() + COMMENT_JOINER if comment.strip() else "") + part
+                    added_also = True
+            if comment != r["comment"]:
+                r["new_comment"], r["also_added"] = comment, added_also
+            elif info or t_alsos:
                 txt_already += 1
-            else:
-                r["new_comment"] = info + (COMMENT_JOINER + r["comment"] if r["comment"].strip() else "")
 
         if name_key(t_rows[0]["name"]) != name_key(n_rows[0]["name"]):
             name_differs.append((n_rows[0]["name"], t_rows[0]["name"]))
@@ -272,6 +312,7 @@ def main():
     print(f"\nPrimers in both lists (matched by sequence): {len(matched)}")
     print(f"   TSV comments extended with the notes:     {n_tsv_changed}" + (f"   ({tsv_already} already had them)" if tsv_already else ""))
     print(f"   TXT comments given length and Tm in front: {n_txt_changed}" + (f"   ({txt_already} already had them)" if txt_already else ""))
+    print(f"   of those, given '{ALSO_LISTED_LABEL} ...' at the end:  {sum(bool(r.get('also_added')) for r in txt_rows)}")
     if no_info:
         print(f"   WARNING, no length/Tm found in the TSV comment for: {', '.join(no_info)}")
 
