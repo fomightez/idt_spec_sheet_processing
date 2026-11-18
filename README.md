@@ -20,6 +20,6 @@ Easiest solution: open the `.tsv` file in Sublime Text (or other text editor; on
 For now, the OCR looking at spec sheets won't handle duplexes. 
 
 
-#### Looking for a convenient place to use the scripts and notebooks?
+#### Looking for a free & convenient place to use the scripts and notebooks without touching your local system?
 
 I have been using MyBinder sessions launched from [my 3Dscatter_plot_mod_playground-binder](https://github.com/fomightez/3Dscatter_plot_mod_playground-binder) repo to develop & run these scripts and notebooks after uploading them and the necessary data. Go to [there](https://github.com/fomightez/3Dscatter_plot_mod_playground-binder) and click the '`lauch binder`' to get started in a Jupyter session without logging in or signing up for anything. (MyBinder, by the Jupyter Community, provides temporary, anonympus remote sessions for  computational efforts with that aren't overly demanding.) 
