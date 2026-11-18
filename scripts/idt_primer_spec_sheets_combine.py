@@ -102,6 +102,7 @@ WRITE_HEADER = True
 # override that was used and warns about any that matched nothing (a typo, or a name OCR read differently).
 NAME_OVERRIDES = {
     '18s rRNAR': '18s rRNA R',
+    '|E1-72': 'IE1-72',
     'Scramble Reverse': 'Scrambled Reverse',
     'PIK3CD 3°UTR FP1 (Sequencing)': "PIK3CD 3'UTR FP1 (Sequencing)",
     'PIK3CD 3’UTR Forward Primer': "PIK3CD 3'UTR Forward Primer",
