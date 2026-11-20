@@ -54,7 +54,10 @@ from PIL import ImageOps
 # Two text clean-up rounds run on the OCR text BEFORE any parsing or checks (see apply_text_fixes()).
 
 # Round 1: exact string replacements for OCR errors you have seen repeatedly (case-sensitive,
-# applied to the whole page text). Add entries as you find patterns.
+# applied to the whole page text). Add entries as you find patterns. Use sparingly though,
+# especially for names because there it may better to put them in `NAME_OVERRIDES` in the 
+# script `idt_primer_spec_sheets_combine.py`, so less chance of clobbering intended text
+# too early in process so that it cannot be handled in a more nuanced manner.
 known_text_error_substitutions = {
     'TB4AQE': 'TB40E',
     'TBAOE': 'TB40E',
