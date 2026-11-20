@@ -15,7 +15,18 @@ For every primer that is in BOTH lists:
         TXT:  20 nts; Tm= 51.9 °C; <the original TXT comment>; also listed as: 18S rRNA F(1)
 
     The "also listed as: ..." part is everything from those words up to the next "; " or the end of the TSV
-    comment. A TSV comment without one adds nothing to the end of the TXT comment.
+    comment. The alternate names in it are separated by " | " (a space, a vertical bar and a space), the way the
+    combine script writes them. A TSV comment without one adds nothing to the end of the TXT comment.
+
+    The primer's OWN name in the TXT is left out of the list that is added to its TXT comment, because it is not
+    an "also" for that line. If no other names are left, nothing is added. Example: the TSV comment says
+    "also listed as: IE1_Rev1 | IE1-72 Reverse" and the TXT line is named IE1_Rev1, so its TXT comment gets
+    "also listed as: IE1-72 Reverse". Names are compared ignoring upper/lower case and extra spaces.
+    (Note that when this was originally developped, it was intended for ones that had no `also listed as: ` 
+    occurences because they were for my own primers that had no duplicates among them and I was just wanting
+    to capture & add the length and Tm details the spec sheets had to the versions of my primers that would 
+    kick off the lst to become the main, established list of lab primers.; however, I realized later I may want
+    to use this script to reconcile cases where there are `also listed as: ` items & so I added this handling.)
 
 Usage:
     python merge_primerDetails_n_comments.py extracted_info.tsv my_primers.txt
@@ -29,10 +40,10 @@ How primers are matched
 
 What is left alone
     The input files are never changed; new files with the prefix BETTER_ are written. Every other line of each
-    file is copied exactly as it was: blank lines, notes, headers, the Upstate list of "name <TAB> 5' - SEQ - 3'"
-    lines, line endings and the file's text encoding. Lines that are already merged are not merged twice, so
-    running the script again on its own output changes nothing. (The "also listed as: ..." text that this script
-    put at the end of a TXT comment is not copied back into the TSV, which already has it.)
+    file is copied exactly as it was: blank lines, notes, headers, line endings and the file's text encoding. 
+    Lines that are already merged are not merged twice, so running the script again on its own output 
+    changes nothing. (The "also listed as: ..." text that this script put at the end of a TXT comment is not 
+    copied back into the TSV, which already has it.)
 
 Lines separated by spaces
     A primer line in the TXT may be separated by runs of two or more spaces instead of tabs. These are read the
@@ -52,12 +63,15 @@ OUTPUT_PREFIX = "BETTER_"      # put in front of each input file's name to make 
 COMMENT_JOINER = "; "          # between the pieces of a comment, as in "21 nts; Tm= 50.2 °C; any comments"
 MIN_SEQUENCE_LENGTH = 8        # a first cell must have at least this many characters to count as a sequence
 ALSO_LISTED_LABEL = "also listed as:"   # the words the combine script puts in front of the other names
+ALSO_SEPARATOR = " | "                  # what the combine script puts between those names
 # ====================================================================================
 
 SEQUENCE_CELL = re.compile(r"(?:/[^/\s]+/|[ACGTUNRYSWKMBDHV])+")
 LEADING_INFO = re.compile(r"^\s*(?:\d+|\?)\s*nts\s*;\s*Tm=\s*(?:[\d.]+\s*\S*C|n/a)\s*(?:;\s*)?")
 # "also listed as: A | B" up to the next "; " (or the end of the comment)
 ALSO_LISTED = re.compile(re.escape(ALSO_LISTED_LABEL) + r"(?:(?!;\s).)*", re.IGNORECASE)
+# an "also listed as: ..." part that runs to the END of a note (so it can be taken off again)
+TRAILING_ALSO = re.compile(r"(?:;\s*)?" + re.escape(ALSO_LISTED_LABEL) + r"(?:(?!;\s).)*$", re.IGNORECASE)
 LENGTH_AND_TM = re.compile(r"(?P<length>(?:\d+|\?)\s*nts)\s*;\s*(?P<tm>Tm=\s*(?:[\d.]+\s*\S*C|n/a))")
 
 
@@ -106,12 +120,33 @@ def also_listed_part(comment):
     return m.group(0).strip() if m else None
 
 
-def strip_also_listed(note, parts):
-    """A TXT note without the exact 'also listed as: ...' part(s) this script may have put at its END. They are
-    removed only when they are the same text the matching TSV comment has, so the TSV does not get them twice
-    and anything you wrote yourself is left alone."""
-    for part in parts:
-        note = re.sub(r"(?:;\s*)?" + re.escape(part) + r"\s*$", "", note.rstrip())
+def split_also_names(part):
+    """['A', 'B'] from 'also listed as: A | B'. The split is on ' | ' as a whole, not on '|', because a name can
+    itself start with a pipe (an OCR misread of an I, such as '|E1-72 Forward')."""
+    part = part.lstrip("; \t")
+    if part.lower().startswith(ALSO_LISTED_LABEL.lower()):
+        part = part[len(ALSO_LISTED_LABEL):]
+    return [n.strip() for n in part.strip().split(ALSO_SEPARATOR) if n.strip()]
+
+
+def also_listed_names(comment):
+    """Every name in every 'also listed as: ...' part found in a comment."""
+    names = []
+    for m in ALSO_LISTED.finditer(comment):
+        names += split_also_names(m.group(0))
+    return names
+
+
+def strip_also_listed(note, known_name_keys):
+    """A TXT note without an 'also listed as: ...' part at its END, when every name in that part is one the TSV
+    already lists (so it is text this script added, which must not be copied back into the TSV). A part that
+    holds any name the TSV does not have is your own writing and is left alone."""
+    note = note.rstrip()
+    m = TRAILING_ALSO.search(note)
+    if m:
+        names = split_also_names(m.group(0))
+        if names and all(name_key(n) in known_name_keys for n in names):
+            note = note[:m.start()].rstrip()
     return note.strip()
 
 
@@ -236,15 +271,20 @@ def main():
     for seq in matched:
         t_rows, n_rows = tsv_by_seq[seq], txt_by_seq[seq]
 
-        # the "also listed as: ..." part(s) that the TSV comments for this primer carry
-        t_alsos = []
+        # the alternate names the TSV comments for this primer carry (from the FIRST "also listed as:" part of each
+        # comment, which is the one the combine script wrote; anything after it is text that was appended later)
+        t_alsos, t_names, t_name_keys = [], [], set()
         for r in t_rows:
             part = also_listed_part(r["comment"])
             if part and part not in t_alsos:
                 t_alsos.append(part)
+            for n in (split_also_names(part) if part else []):
+                if name_key(n) not in t_name_keys:
+                    t_name_keys.add(name_key(n))
+                    t_names.append(n)
 
         # TSV: append the notes to the end of the comment
-        notes = [n for n in (strip_also_listed(strip_leading_info(r["comment"]), t_alsos) for r in n_rows) if n]
+        notes = [n for n in (strip_also_listed(strip_leading_info(r["comment"]), t_name_keys) for r in n_rows) if n]
         for r in t_rows:
             current = r["comment"]
             to_add = [n for n in notes if n not in current]          # never add the same note twice
@@ -262,10 +302,13 @@ def main():
             if info and not comment.lstrip().startswith(info):
                 comment = info + (COMMENT_JOINER + comment if comment.strip() else "")
             added_also = False
-            for part in t_alsos:
-                if part not in comment:                                  # never add the same text twice
-                    comment = (comment.rstrip() + COMMENT_JOINER if comment.strip() else "") + part
-                    added_also = True
+            # the alternate names for THIS line: not its own name, and not any the comment already lists
+            already = {name_key(n) for n in also_listed_names(comment)} | {name_key(r["name"])}
+            missing = [n for n in t_names if name_key(n) not in already]
+            if missing:
+                comment = ((comment.rstrip() + COMMENT_JOINER) if comment.strip() else "") \
+                          + ALSO_LISTED_LABEL + " " + ALSO_SEPARATOR.join(missing)
+                added_also = True
             if comment != r["comment"]:
                 r["new_comment"], r["also_added"] = comment, added_also
             elif info or t_alsos:
