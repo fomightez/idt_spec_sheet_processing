@@ -7,26 +7,36 @@ Cross-merge the comments of two lists that describe the same primers, and write 
 
 For every primer that is in BOTH lists:
     - the notes TXT comment is APPENDED to the end of the TSV comment            (TSV -> BETTER_<tsv name>)
-    - the length and Tm from the TSV comment are added to the FRONT of the TXT comment, and the
-      "also listed as: ..." part of the TSV comment (the other names the same sequence was ordered under, written
-      by the combine script), if it has one, is added to the END of the TXT comment   (TXT -> BETTER_<txt name>)
+    - the length and Tm from the TSV comment are added to the FRONT of the TXT comment, and the other names the
+      TSV knows this primer by are added to the END of it as "also listed as: ..."   (TXT -> BETTER_<txt name>)
 
-        TSV:  20 nts; Tm= 51.9 °C; also listed as: 18S rRNA F(1); <comment from the TXT>
-        TXT:  20 nts; Tm= 51.9 °C; <the original TXT comment>; also listed as: 18S rRNA F(1)
+        TSV (named "18S rRNA F"):   20 nts; Tm= 51.9 °C; also listed as: 18S rRNA F(1); <comment from the TXT>
+        TXT (named "18S_rRNA_F"):   20 nts; Tm= 51.9 °C; <the original TXT comment>; also listed as: 18S rRNA F | 18S rRNA F(1)
 
-    The "also listed as: ..." part is everything from those words up to the next "; " or the end of the TSV
-    comment. The alternate names in it are separated by " | " (a space, a vertical bar and a space), the way the
-    combine script writes them. A TSV comment without one adds nothing to the end of the TXT comment.
+    The TXT is treated as the main source of names, so its names are never changed. The list added to a TXT
+    comment holds, in this order:
+        1. the name the TSV shows for that primer, if it differs from the TXT line's name
+           (can be switched off with ADD_TSV_NAME_TO_ALSO_LISTED in the SETTINGS block), then
+        2. the names in the TSV comment's own "also listed as: ..." part, if it has one (the other names the same
+           sequence was ordered under, written by the combine script).
+    The TXT line's OWN name is always left out, because it is not an "also" for that line, and so is any name
+    the TXT comment already lists. If no names are left, nothing is added. Names are compared ignoring
+    upper/lower case and extra spaces.
 
-    The primer's OWN name in the TXT is left out of the list that is added to its TXT comment, because it is not
-    an "also" for that line. If no other names are left, nothing is added. Example: the TSV comment says
-    "also listed as: IE1_Rev1 | IE1-72 Reverse" and the TXT line is named IE1_Rev1, so its TXT comment gets
-    "also listed as: IE1-72 Reverse". Names are compared ignoring upper/lower case and extra spaces.
-    (Note that when this was originally developped, it was intended for ones that had no `also listed as: ` 
+    The "also listed as: ..." part of a TSV comment is everything from those words up to the next "; " or the end
+    of the comment. The names in it are separated by " | " (a space, a vertical bar and a space), the way the
+    combine script writes them.
+
+    Example: the TSV shows the name IE1_Rev] (an OCR misread) with "also listed as: IE1_Rev1 | IE1-72 Reverse",
+    and the TXT line is named IE1_Rev1. Its TXT comment gets "also listed as: IE1_Rev] | IE1-72 Reverse".
+
+    (Note that when this was originally developed, it was intended for ones that had no `also listed as: ` 
     occurences because they were for my own primers that had no duplicates among them and I was just wanting
     to capture & add the length and Tm details the spec sheets had to the versions of my primers that would 
     kick off the lst to become the main, established list of lab primers.; however, I realized later I may want
-    to use this script to reconcile cases where there are `also listed as: ` items & so I added this handling.)
+    to use this script to reconcile cases where there are `also listed as: ` items & so I added this handling
+    towards the end and I haven't adequately tested whether the TXT file will be respected as the main version
+    for the name when considering alternate names listed.)
 
 Usage:
     python merge_primerDetails_n_comments.py extracted_info.tsv my_primers.txt
@@ -40,10 +50,11 @@ How primers are matched
 
 What is left alone
     The input files are never changed; new files with the prefix BETTER_ are written. Every other line of each
-    file is copied exactly as it was: blank lines, notes, headers, line endings and the file's text encoding. 
-    Lines that are already merged are not merged twice, so running the script again on its own output 
-    changes nothing. (The "also listed as: ..." text that this script put at the end of a TXT comment is not 
-    copied back into the TSV, which already has it.)
+    file is copied exactly as it was: blank lines, notes, headers, the Upstate list of "name <TAB> 5' - SEQ - 3'"
+    lines, line endings and the file's text encoding. Lines that are already merged are not merged twice, so
+    running the script again on its own output changes nothing. (The "also listed as: ..." text that this script
+    put at the end of a TXT comment is not copied back into the TSV, which already has those names.) BETTER_ files
+    made by an earlier version of this script should be remade from your original files, not fed back in.
 
 Lines separated by spaces
     A primer line in the TXT may be separated by runs of two or more spaces instead of tabs. These are read the
@@ -64,6 +75,9 @@ COMMENT_JOINER = "; "          # between the pieces of a comment, as in "21 nts;
 MIN_SEQUENCE_LENGTH = 8        # a first cell must have at least this many characters to count as a sequence
 ALSO_LISTED_LABEL = "also listed as:"   # the words the combine script puts in front of the other names
 ALSO_SEPARATOR = " | "                  # what the combine script puts between those names
+ADD_TSV_NAME_TO_ALSO_LISTED = True      # list the TSV's name for a primer among the "also listed as" names added to
+                                        # its TXT comment when the TXT line is named differently (False = only the
+                                        # names from the TSV comment's own "also listed as: ..." part)
 # ====================================================================================
 
 SEQUENCE_CELL = re.compile(r"(?:/[^/\s]+/|[ACGTUNRYSWKMBDHV])+")
@@ -271,17 +285,26 @@ def main():
     for seq in matched:
         t_rows, n_rows = tsv_by_seq[seq], txt_by_seq[seq]
 
-        # the alternate names the TSV comments for this primer carry (from the FIRST "also listed as:" part of each
-        # comment, which is the one the combine script wrote; anything after it is text that was appended later)
+        # every name the TSV knows this primer by: first the name it shows, then the "also listed as: ..." names
+        # (taken from the FIRST such part of each comment, the one the combine script wrote; anything after it is
+        # text that was appended later)
         t_alsos, t_names, t_name_keys = [], [], set()
+        main_keys = {name_key(r["name"]) for r in t_rows if r["name"]}
+
+        def add_name(n):
+            if name_key(n) not in t_name_keys:
+                t_name_keys.add(name_key(n))
+                t_names.append(n)
+
+        for r in t_rows:
+            if r["name"]:
+                add_name(r["name"])
         for r in t_rows:
             part = also_listed_part(r["comment"])
             if part and part not in t_alsos:
                 t_alsos.append(part)
             for n in (split_also_names(part) if part else []):
-                if name_key(n) not in t_name_keys:
-                    t_name_keys.add(name_key(n))
-                    t_names.append(n)
+                add_name(n)
 
         # TSV: append the notes to the end of the comment
         notes = [n for n in (strip_also_listed(strip_leading_info(r["comment"]), t_name_keys) for r in n_rows) if n]
@@ -302,9 +325,11 @@ def main():
             if info and not comment.lstrip().startswith(info):
                 comment = info + (COMMENT_JOINER + comment if comment.strip() else "")
             added_also = False
-            # the alternate names for THIS line: not its own name, and not any the comment already lists
+            # the other names for THIS line: not its own name, and not any the comment already lists
             already = {name_key(n) for n in also_listed_names(comment)} | {name_key(r["name"])}
-            missing = [n for n in t_names if name_key(n) not in already]
+            missing = [n for n in t_names
+                       if name_key(n) not in already
+                       and (ADD_TSV_NAME_TO_ALSO_LISTED or name_key(n) not in main_keys)]
             if missing:
                 comment = ((comment.rstrip() + COMMENT_JOINER) if comment.strip() else "") \
                           + ALSO_LISTED_LABEL + " " + ALSO_SEPARATOR.join(missing)
