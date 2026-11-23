@@ -1,9 +1,33 @@
 # idt_spec_sheet_processing
 Python scripts and Jupyter Notebooks to extract data from IDT spec sheets for primers/oligonucleotides and combine into a useful form.
 
+-------
+
+### Overview
+
+Format for the generated final entries for the spreadsheet/text data table:
+primer sequence <tab> name of the primer <tab> comments 
+
+(That is essentially a remix of the standard FASTA format with the 'comments' being analogous to the optional description on the header line.)
+
+The important part is that the software here is to avoid errors in the sequence and names of the primer by making it programmatic to collect and process the data from the IDT spec sheets to result in a primer spreadsheet/text data table.  The 'comments' field is the only part you'd want to generally be editing by hand.
+
+Essentially you only need to run the appropriate provided Jupyter Notebooks and most things will be handled.  If you are just getting started, you'd use `Collecting_data_from_scanned_IDT_Spec_Sheets.ipynb`. Once you have an established main listing, you switch to using `Updating_primer_list_with_data_from_scanned_IDT_Spec_Sheets.ipynb` going forward to add more primers as you need to update.
+
+It isn't perfect; however, the Jupyter notebook/scripts will signal those that need additional scrutiny. Look for `REVIEW: checks failed, verify against the scan` or `only length was verified` in the comments field to highlight those.
+
+-------
+
+
+### Looking for a free & convenient place to use the scripts and notebooks without touching your local machine?
+
+I have been using MyBinder sessions launched from [my 3Dscatter_plot_mod_playground-binder](https://github.com/fomightez/3Dscatter_plot_mod_playground-binder) repo to develop & run these scripts and notebooks after uploading them and the necessary data. Go to [there](https://github.com/fomightez/3Dscatter_plot_mod_playground-binder) and click the '`lauch binder`' to get started in a Jupyter session without logging in or signing up for anything. (MyBinder, by the Jupyter Community, provides temporary, anonymous remote sessions for  computational efforts with that aren't overly demanding.) 
+
+
 ---------
 
-These are meant for mining scanned spec sheets you may have if you order your primers/oligonucleotides from [Integrated DNA Technology (IDT)](https://www.idtdna.com/), and then combines the mined data into a spreadsheet/text table you can use going forward as your laboratorys's primer listing. Then let's you mine more scanned later and continue to combine to keep updating as more spec sheets are found or orders placed.
+### Details of the software components
+These script and notebooks are meant for mining scanned spec sheets you may have if you order your primers/oligonucleotides from [Integrated DNA Technology (IDT)](https://www.idtdna.com/), and then combines the mined data into a spreadsheet/text table you can use going forward as your laboratorys's primer listing. Then let's you mine more scanned later and continue to combine to keep updating as more spec sheets are found or orders placed.
 
 The scripts and notebooks:
 - `idt_primer_spec_sheet_ocrOct29-2026.py` - script that mines details scans of IDT spec sheets (as PDFs) using optical character recognition (OCR). The script doesn't care about orientation of the individual scanned pages and it validates the scanned information with checks of the extinction coefficient and molecular weight and warns when not verified and things should be reviewed by user inspection. For scanning-generated text errors that keep coming up, there is a dictionary of exact, case-sensitive replacements applied to the whole page text to which you can add entries as you find recurring OCR errors. Tries to ignore stray pencil or pen marks in the area of sequences on the spec sheets. This script produces a `.csv` file with many details about the primers and how and from where they were mined. There will be one `.csv` produced per set of `.pdf` files of the spec sheets.
@@ -20,9 +44,3 @@ Easiest solution: open the `.tsv` file in Sublime Text (or other text editor; on
 
 For now, the OCR looking at spec sheets won't handle duplexes. 
 
--------
-
-
-### Looking for a free & convenient place to use the scripts and notebooks without touching your local machine?
-
-I have been using MyBinder sessions launched from [my 3Dscatter_plot_mod_playground-binder](https://github.com/fomightez/3Dscatter_plot_mod_playground-binder) repo to develop & run these scripts and notebooks after uploading them and the necessary data. Go to [there](https://github.com/fomightez/3Dscatter_plot_mod_playground-binder) and click the '`lauch binder`' to get started in a Jupyter session without logging in or signing up for anything. (MyBinder, by the Jupyter Community, provides temporary, anonymous remote sessions for  computational efforts with that aren't overly demanding.) 
