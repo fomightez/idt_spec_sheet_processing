@@ -53,7 +53,7 @@ In addition to reviewing, you'll need to do any applicable editing & annotating 
 
 ### Details of the software components
 
-The guidance above should be sufficient for most users. This section is meant for those more curious or troubleshooting.
+The guidance above should be sufficient for most users. This section is meant for those more curious and/or troubleshooting.
 
 These script and notebooks are meant for mining scanned spec sheets you may have if you order your primers/oligonucleotides from [Integrated DNA Technology (IDT)](https://www.idtdna.com/), and then combines the mined data into a spreadsheet/text table you can use going forward as your laboratorys's primer listing. Then let's you mine more scanned later and continue to combine to keep updating as more spec sheets are found or orders placed.
 
